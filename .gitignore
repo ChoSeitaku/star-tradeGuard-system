@@ -1,0 +1,22 @@
+# 运行时产物（由 scripts/init_db.py 生成）
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 前端依赖（构建产物 frontend/dist 需随仓库提供，运行时无需 Node，故不忽略）
+node_modules/
+.vite/
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 验证过程产物
+.verify_shots/

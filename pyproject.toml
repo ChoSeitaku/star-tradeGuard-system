@@ -1,0 +1,12 @@
+[project]
+name = "star-tradeguard-system"
+version = "0.1.0"
+description = "电商风险控制系统（star-tradeGuard）：风险识别、规则判断、人工复核、处置留痕、结果查询闭环"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+
+[tool.setuptools]
+packages = []
