@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+import ai_explainer  # noqa: E402
 import blacklists  # noqa: E402
 import cases  # noqa: E402
 import decision  # noqa: E402
@@ -78,7 +79,16 @@ def meta():
 
 @app.get("/api/health", tags=["基础数据"], summary="健康检查")
 def health():
-    return {"status": "ok", "service": "star-tradeGuard"}
+    return {
+        "status": "ok",
+        "service": "star-tradeGuard",
+        # AI 风险解读层状态：未配置凭据时自动降级为规则模板文案
+        "ai_explainer": {
+            "configured": ai_explainer.configured(),
+            "provider": "deepseek" if ai_explainer.configured() else "rule_engine",
+            "model": ai_explainer.model_name() if ai_explainer.configured() else None,
+        },
+    }
 
 
 # ---------- 前端静态资源（frontend/dist 构建产物，运行时无需 Node） ----------

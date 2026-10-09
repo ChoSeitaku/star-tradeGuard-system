@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import db as db_module
 import features as features_module
 import rules as rules_module
+import ai_explainer as ai_module
 from config import (AUTO_CASE_DECISIONS, CASE_STATUS_BY_DECISION, CASE_STATUS_LABELS, DECISION_LABELS,
                     EVENT_TYPES, EVENT_TYPE_LABELS, LEVEL_DECISION_MAP, LEVEL_HIGH_THRESHOLD,
                     LEVEL_MEDIUM_THRESHOLD, RISK_LEVEL_LABELS, SCORE_CAP)
@@ -76,6 +77,9 @@ def build_assessment_detail(conn: sqlite3.Connection, assessment_id: int) -> dic
         except json.JSONDecodeError:
             feature_snapshot = {}
 
+    # AI 风险解读：读取首次生成时落库的结果，GET 查询不重复调用大模型
+    ai_note = ai_module.load_note(conn, assessment_id)
+
     case = db_module.query_one(
         conn, "SELECT id, case_status, reviewer_id, review_result FROM risk_cases WHERE assessment_id=?",
         (assessment_id,))
@@ -103,6 +107,11 @@ def build_assessment_detail(conn: sqlite3.Connection, assessment_id: int) -> dic
         "case_status_label": CASE_STATUS_LABELS.get(case["case_status"], "") if case else None,
         "reviewer_id": case["reviewer_id"] if case else None,
         "review_result": case["review_result"] if case else None,
+        "ai_enabled": ai_module.configured(),
+        "ai_provider": (ai_note or {}).get("provider"),
+        "ai_model": (ai_note or {}).get("model"),
+        "ai_generated_at": (ai_note or {}).get("created_at"),
+        "ai_explanation": (ai_note or {}).get("payload"),
     }
 
 
@@ -199,12 +208,26 @@ def risk_check(payload: RiskCheckRequest, conn: sqlite3.Connection = Depends(db_
         )
 
     detail = build_assessment_detail(conn, assessment_id)
+
+    # ---------- 7. AI 风险解读（只做解读与处置建议，不改动评分与决策结论） ----------
+    # 未配置大模型凭据或调用失败时，本步骤自动回落规则模板文案，不影响主流程
+    ai_module.generate_for_assessment(conn, assessment_id, ai_module.context_from_detail(detail))
+    detail = build_assessment_detail(conn, assessment_id)
     detail["message"] = f"风险检查完成：评分 {risk_score}，风险等级 {RISK_LEVEL_LABELS[risk_level]}"
     return detail
 
 
 @router.get("/assessments/{assessment_id}", summary="查询风险检查结果")
 def get_assessment(assessment_id: int, conn: sqlite3.Connection = Depends(db_module.get_db)):
+    return build_assessment_detail(conn, assessment_id)
+
+
+@router.post("/assessments/{assessment_id}/ai-explain", summary="重新生成 AI 风险解读")
+def refresh_ai_explanation(assessment_id: int,
+                           conn: sqlite3.Connection = Depends(db_module.get_db)):
+    """按需重新调用大模型解读（默认 GET 复用首次落库结果，不重复消耗 token）。"""
+    detail = build_assessment_detail(conn, assessment_id)
+    ai_module.generate_for_assessment(conn, assessment_id, ai_module.context_from_detail(detail))
     return build_assessment_detail(conn, assessment_id)
 
 

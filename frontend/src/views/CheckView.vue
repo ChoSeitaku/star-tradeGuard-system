@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getMeta, listEvents, riskCheck } from '../api'
+import { getMeta, listEvents, regenerateAiExplanation, riskCheck } from '../api'
 import { canSubmitCheck, operatorName } from '../stores/role'
 import VChart from '../components/VChart.vue'
 
@@ -18,6 +18,7 @@ const form = reactive({
 const meta = ref({ event_types: [], features: [], dimensions: [], score_model: {} })
 const loading = ref(false)
 const result = ref(null)
+const aiLoading = ref(false)
 const recent = ref([])
 
 // 演示场景快捷入口，覆盖 4 类业务事件与高中低三档风险
@@ -110,6 +111,18 @@ async function submit() {
     loadRecent()
   } finally {
     loading.value = false
+  }
+}
+
+// 重新调用大模型生成风险解读（GET 默认复用首次落库结果）
+async function regenerateAi() {
+  if (!result.value?.assessment_id) return
+  aiLoading.value = true
+  try {
+    result.value = await regenerateAiExplanation(result.value.assessment_id)
+    ElMessage.success('AI 风险解读已更新')
+  } finally {
+    aiLoading.value = false
   }
 }
 
@@ -229,6 +242,45 @@ onMounted(async () => {
           </el-descriptions>
         </div>
       </div>
+
+      <!-- AI 风险解读（大模型基于规则引擎结论生成，仅辅助解读，不改变评分与决策） -->
+      <div class="tg-dim-title">
+        AI 风险解读
+        <span class="tg-muted" style="font-weight:400;margin-left:8px;">
+          <template v-if="result.ai_provider === 'deepseek'">
+            来源：大模型 {{ result.ai_model }} · 生成于 {{ result.ai_generated_at }}
+          </template>
+          <template v-else-if="result.ai_provider">来源：规则模板（未启用大模型）</template>
+        </span>
+        <el-button
+          v-if="result.ai_provider"
+          size="small" text type="primary"
+          style="float:right;margin-top:-4px;"
+          :loading="aiLoading" @click="regenerateAi"
+        >重新生成解读</el-button>
+      </div>
+      <div v-if="result.ai_explanation" class="tg-ai-panel">
+        <div class="tg-ai-summary">
+          <el-icon style="margin-right:6px;vertical-align:-2px;"><MagicStick /></el-icon>
+          {{ result.ai_explanation.summary }}
+        </div>
+        <div v-if="(result.ai_explanation.key_factors || []).length" class="tg-ai-block">
+          <div class="tg-ai-label">关键风险点</div>
+          <ul class="tg-ai-list">
+            <li v-for="(factor, i) in result.ai_explanation.key_factors" :key="i">{{ factor }}</li>
+          </ul>
+        </div>
+        <div v-if="(result.ai_explanation.handling_steps || []).length" class="tg-ai-block">
+          <div class="tg-ai-label">处置建议</div>
+          <ol class="tg-ai-list">
+            <li v-for="(step, i) in result.ai_explanation.handling_steps" :key="i">{{ step }}</li>
+          </ol>
+        </div>
+        <div v-if="result.ai_explanation.risk_note" class="tg-ai-note">
+          {{ result.ai_explanation.risk_note }}
+        </div>
+      </div>
+      <div v-else class="tg-empty">暂无 AI 解读（历史评估数据，可点击上方按钮重新生成）</div>
 
       <!-- 命中规则 -->
       <div class="tg-dim-title">命中规则（{{ result.hit_count }} 条）</div>

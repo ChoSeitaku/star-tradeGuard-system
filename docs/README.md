@@ -269,7 +269,51 @@ mysql -u root -p tradeguard < sql/sample_data.sql
 
 ---
 
-## 九、常见问题
+## 九、AI 风险解读层（可选）
+
+规则引擎负责「定性」——25 个特征 + 24 条规则给出评分、风险等级与决策；AI 层只负责「解释」——把命中结果翻译成运营/风控能直接执行的说明。
+**评分与决策永远由规则引擎给出，AI 不参与打分，也不改写规则命中项。**
+
+### 1. 能力范围
+
+| 场景 | 位置 | 产出 |
+| --- | --- | --- |
+| 风险检查 | `POST /api/risk/check` 响应中的 `ai_explanation` | 结论摘要、关键风险点、处置步骤、注意事项 |
+| 案件详情 | `GET /api/risk/assessments/{id}` 响应中的 `ai_explanation` | 同上（首次评估时生成并落库，查询不复用不重复消耗 token） |
+| 重新解读 | `POST /api/risk/assessments/{id}/ai-explain` | 按需重新调用大模型并覆盖落库结果 |
+| 服务状态 | `GET /api/health` → `ai_explainer` | `configured` / `provider` / `model` |
+
+响应字段：`ai_enabled`、`ai_provider`、`ai_model`、`ai_generated_at`、`ai_explanation{summary, key_factors[], handling_steps[], risk_note}`。
+
+### 2. 配置（环境变量，写在 /opt/star/.env）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `AI_PROVIDER` | `deepseek` | 目前实现 `deepseek`（OpenAI 兼容协议） |
+| `DEEPSEEK_API_KEY` | 空 | 未配置时自动降级为规则模板文案，功能可用、不报错 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 兼容自建 / 代理网关 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 模型名 |
+| `AI_TIMEOUT_SECONDS` | `180` | 单次调用超时（秒） |
+| `AI_TEMPERATURE` | `0.2` | 低温度，保证解读口径稳定 |
+| `AI_MAX_TOKENS` | `1200` | 输出上限 |
+| `AI_REASONING_EFFORT` | `low` | 推理强度 |
+
+改完执行：`cd /opt/star && docker compose up -d --force-recreate trade-guard`。
+
+### 3. 降级与容错
+
+- 未配置 Key / 调用超时 / 返回非法 JSON：自动回退本地规则模板文案，`ai_provider` 标记为 `rule_engine`，页面提示「规则模板（未启用大模型）」，业务链路不中断。
+- AI 解读仅作展示与建议，不自动处置、不自动扣款，所有动作仍需人工确认。
+- 解读结果随评估落库（`ai_explanation` 表），同一评估重复查询不重复调用大模型。
+
+### 4. 验收
+
+```bash
+cd /opt/star && python3 e2e_ai_test.py   # AI 链路端到端（PASS/FAIL 汇总）
+python3 e2e_ai_diag.py                   # 逐接口打印真实返回样例，便于人工核对
+```
+
+## 十、常见问题
 
 **Q：提示「无法连接后端服务」？**
 先确认服务已启动（`start.bat`），访问 <http://127.0.0.1:8005/api/health> 应返回 `{"status":"ok"}`。

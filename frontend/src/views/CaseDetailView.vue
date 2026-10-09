@@ -173,6 +173,36 @@ onMounted(async () => {
             <div v-if="!(assessment?.rule_hits || []).length" class="tg-empty">未命中任何风险规则</div>
           </div>
 
+          <!-- AI 风险解读（辅助解读，评分与决策仍由规则引擎给出） -->
+          <div v-if="assessment?.ai_explanation" class="tg-card">
+            <div class="tg-card-title">
+              <div class="title-left"><span class="tg-title-bar"></span>AI 风险解读</div>
+              <span class="tg-muted" style="font-size:12px;">
+                {{ assessment.ai_provider === 'deepseek'
+                  ? `大模型 ${assessment.ai_model || ''} · ${assessment.ai_generated_at || ''}`
+                  : '规则模板（未启用大模型）' }}
+              </span>
+            </div>
+            <div class="tg-ai-panel">
+              <div class="tg-ai-summary">{{ assessment.ai_explanation.summary }}</div>
+              <div v-if="(assessment.ai_explanation.key_factors || []).length" class="tg-ai-block">
+                <div class="tg-ai-label">关键风险点</div>
+                <ul class="tg-ai-list">
+                  <li v-for="(factor, i) in assessment.ai_explanation.key_factors" :key="i">{{ factor }}</li>
+                </ul>
+              </div>
+              <div v-if="(assessment.ai_explanation.handling_steps || []).length" class="tg-ai-block">
+                <div class="tg-ai-label">处置建议</div>
+                <ol class="tg-ai-list">
+                  <li v-for="(step, i) in assessment.ai_explanation.handling_steps" :key="i">{{ step }}</li>
+                </ol>
+              </div>
+              <div v-if="assessment.ai_explanation.risk_note" class="tg-ai-note">
+                {{ assessment.ai_explanation.risk_note }}
+              </div>
+            </div>
+          </div>
+
           <!-- 特征快照 -->
           <div class="tg-card">
             <div class="tg-card-title">

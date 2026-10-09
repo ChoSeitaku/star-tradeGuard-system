@@ -23,6 +23,7 @@ export const getHealth = () => http.get('/health')
 // ---------------- 检查模块 ----------------
 export const riskCheck = (payload) => http.post('/risk/check', payload)
 export const getAssessment = (id) => http.get(`/risk/assessments/${id}`)
+export const regenerateAiExplanation = (id) => http.post(`/risk/assessments/${id}/ai-explain`)
 export const listEvents = (params) => http.get('/risk/events', { params })
 
 // ---------------- 规则模块 ----------------
